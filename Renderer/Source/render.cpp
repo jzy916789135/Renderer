@@ -18,7 +18,7 @@ void Render::Init()
 	mCamera = std::make_unique<Camera>(glm::vec3(-10.f, 5.f, 0.f), 45, 1920.f / 1080.f, 0.1f, 100.f);
 	BuildLight();
 	BuildTexture();
-	BuildGeometries(); 
+	BuildGeometries();
 	BuildMaterials();
 	BuildShaders();
 	BuildModelMeshes();
@@ -237,7 +237,7 @@ void Render::BuildShaders()
 	shadowShader->Attach();
 	shadowShader->Link();
 	shadowShader->use();
-	
+
 	glm::mat4 lightView = glm::lookAt(mLights[0]->position, mLights[0]->focalPoint, glm::vec3(0.f, 1.f, 0.f));
 	glm::mat4 lightProj = glm::perspective(glm::radians(45.0f), 1920.f / 1080.f, 0.1f, 100.f);
 	shadowShader->SetMat4("lightProjView", lightProj * lightView);
@@ -299,7 +299,7 @@ void Render::BuildModelMeshes()
 }
 
 void Render::BuildRenderItems()
-{	
+{
 	//model
 	for (auto iter = mModelMeshes.begin(); iter != mModelMeshes.end(); ++iter)
 	{
@@ -327,7 +327,7 @@ void Render::BuildRenderItems()
 	mSkyItem = std::move(skyItem);
 
 	//box
-	
+
 	auto boxItem = std::make_unique<RenderItem>();
 	boxItem->name = "Box";
 	boxItem->position = glm::vec3(0.0f, 2.0f, 0.0f);
@@ -337,7 +337,7 @@ void Render::BuildRenderItems()
 	boxItem->textureScale = 1;
 	mOpaqueItems.push_back(boxItem.get());
 	mRenderItems.push_back(std::move(boxItem));
-	
+
 	//grid
 
 	auto gridItem = std::make_unique<RenderItem>();
@@ -411,7 +411,7 @@ void Render::UpdateDrawData()
 			mRenderItems[i]->bCulled = false;
 			numObjVisible++;
 		}
-		
+
 	}
 }
 void Render::GLPrepare()
@@ -456,7 +456,7 @@ void Render::GLPrepare()
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo); // now actually attach it
 	// now that we actually created the framebuffer and added all attachments we want to check if it is actually complete now
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	
+
 
 
 	glGenFramebuffers(1, &shadowFB);
@@ -474,6 +474,35 @@ void Render::GLPrepare()
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowRB, 0);
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	//MSAA
+	//ÑÕÉ«»º³å
+	glGenFramebuffers(1, &FB);
+	glBindFramebuffer(GL_FRAMEBUFFER, FB);
+
+	glGenTextures(1, &CB);
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, CB);
+	glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGB, 1920, 1080, GL_TRUE);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, CB, 0);
+
+	glGenRenderbuffers(1, &RB);
+	glBindRenderbuffer(GL_RENDERBUFFER, RB);
+	glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH24_STENCIL8, 1920, 1080);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, RB);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+	//    unsigned int intermediateFBO;
+	glGenFramebuffers(1, &intermediateFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, intermediateFBO);
+	// create a color attachment texture
+	glGenTextures(1, &screenTexture);
+	glBindTexture(GL_TEXTURE_2D, screenTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1920, 1080, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenTexture, 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 void Render::Draw()
@@ -498,7 +527,8 @@ void Render::Draw()
 		DrawShadow();
 		DrawSkyBox();
 		DrawOpaque();
-		DrawBoundingBox();
+		if (isBbox)
+			DrawBoundingBox();
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		DrawFrameBuffer();
 
@@ -517,7 +547,7 @@ void Render::DrawLight()
 	light->SetMat4("passCb.proj", mPassCb.proj);
 	for (auto item : mLightItems)
 	{
-		glm::mat4 model = glm::scale(item->world,glm::vec3(0.2f));
+		glm::mat4 model = glm::scale(item->world, glm::vec3(0.2f));
 		light->SetMat4("model", item->world);
 		light->SetVec3("emmisive", item->mat->emmisive);
 		item->Draw(light);
@@ -540,6 +570,8 @@ void Render::DrawOpaque()
 	}
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, shadowRB);
+	glm::mat4 lightView = glm::lookAt(mLights[0]->position, mLights[0]->focalPoint, glm::vec3(0.f, 1.f, 0.f));
+	glm::mat4 lightProj = glm::perspective(glm::radians(45.0f), 1920.f / 1080.f, 0.1f, 100.f);
 	for (auto item : mOpaqueItems)
 	{
 		if (item->bCulled) continue;
@@ -547,6 +579,7 @@ void Render::DrawOpaque()
 		glBindTexture(GL_TEXTURE_2D, item->mat->diffuseID);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, item->mat->normalID);
+		shape->SetMat4("lightProjView", lightProj * lightView);
 		shape->SetMat4("model", item->world);
 		shape->SetInt("textureScale", item->textureScale);
 		shape->SetVec3("material.albedo", item->mat->albedo);
@@ -563,12 +596,15 @@ void Render::DrawShadow()
 {
 	glViewport(0, 0, mShadowMap->GetWidth(), mShadowMap->GetHeight());
 	auto shadow = mShaders["Shadow"].get();
-	shadow ->use();
+	shadow->use();
 	glBindFramebuffer(GL_FRAMEBUFFER, shadowFB);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glm::mat4 lightView = glm::lookAt(mLightItems[0]->position, mLights[0]->focalPoint, glm::vec3(0.f, 1.f, 0.f));
+	glm::mat4 lightProj = glm::perspective(glm::radians(45.0f), 1920.f / 1080.f, 0.1f, 100.f);
 	for (auto item : mOpaqueItems)
 	{
+		shadow->SetMat4("lightProjView", lightProj * lightView);
 		shadow->SetMat4("model", item->world);
 		item->Draw(shadow);
 	}
@@ -578,13 +614,13 @@ void Render::DrawShadow()
 }
 
 void Render::DrawFrameBuffer()
-{	
+{
 	glDisable(GL_DEPTH_TEST);
 	auto screen = mShaders["Screen"].get();
 	screen->use();
-	glBindVertexArray(quadVAO);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+	glBindVertexArray(quadVAO);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 void Render::DrawSkyBox()
@@ -602,17 +638,34 @@ void Render::DrawSkyBox()
 
 void Render::DrawBoundingBox()
 {
+	//glViewport(0, 0, screenWidth, screenHeight);
 	auto boundingBox = mShaders["BoundingBox"].get();
 	boundingBox->use();
+	/*
+	glBindFramebuffer(GL_FRAMEBUFFER,FB);
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	*/
 	boundingBox->SetMat4("passCb.view", mPassCb.view);
 	boundingBox->SetMat4("passCb.proj", mPassCb.proj);
 	for (int i = 0; i < mBoundingBoxRenderItems.size(); i++)
 	{
 		auto item = mBoundingBoxRenderItems[i].get();
+		auto opaqueItem = mRenderItems[i].get();
+		item->bCulled = mRenderItems[i]->bCulled;
 		if (item->bCulled) continue;
+		item->position = opaqueItem->position + opaqueItem->geo->bounds.center;
+		item->scale = glm::vec3(opaqueItem->geo->bounds.entents.x * opaqueItem->scale.x, opaqueItem->geo->bounds.entents.y * opaqueItem->scale.y, opaqueItem->geo->bounds.entents.z * opaqueItem->scale.z);
+		item->UpdateWorld();
 		boundingBox->SetMat4("model", item->world);
 		item->DrawLines(boundingBox);
 	}
+	/*
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, FB);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, intermediateFBO);
+	glBlitFramebuffer(0, 0, screenWidth, screenHeight, 0, 0, screenWidth, screenHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glViewport(0, 0, screenWidth, screenHeight);
+	*/
 }
 void Render::ProcessInput(GLFWwindow* window)
 {
@@ -630,7 +683,27 @@ void Render::ProcessInput(GLFWwindow* window)
 		mCamera->ProcessKeyboard(EcameraMovement::LEFT, deltaTime);
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
 		mCamera->ProcessKeyboard(EcameraMovement::RIGHT, deltaTime);
-
+	if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
+	{
+		lastFrameForBbox += 1;
+		if (lastFrameForBbox > 10)
+		{
+			isBbox = !isBbox;
+			lastFrameForBbox = 0;
+		}
+	}
+	if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS)
+		mLightItems[0]->position += glm::vec3(0.1, 0.0, 0.0);
+	if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
+		mLightItems[0]->position += glm::vec3(-0.1, 0.0, 0.0);
+	if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS)
+		mLightItems[0]->position += glm::vec3(0.0, 0.0, -0.1);
+	if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
+		mLightItems[0]->position += glm::vec3(0.0, 0.0, 0.1);
+	if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS)
+		mLightItems[0]->position += glm::vec3(0.0, -0.1, 0.0);
+	if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS)
+		mLightItems[0]->position += glm::vec3(0.0, 0.1, 0.0);
 	double x, y;
 	glfwGetCursorPos(mWindow, &x, &y);
 	mCamera->ProcessMouseMovement(x, y, GetPressedButton(mWindow));
@@ -641,7 +714,7 @@ EInputButton Render::GetPressedButton(GLFWwindow* window)
 	EInputButton result = EInputButton::NONE;
 
 	if (glfwGetMouseButton(window, 0) == GLFW_PRESS)
-		return EInputButton::LEFT;	
+		return EInputButton::LEFT;
 	else if (glfwGetMouseButton(window, 1) == GLFW_PRESS)
 		return EInputButton::RIGHT;
 	else if (glfwGetMouseButton(window, 2) == GLFW_PRESS)

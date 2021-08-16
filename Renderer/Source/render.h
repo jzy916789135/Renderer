@@ -78,8 +78,13 @@ private:
 	unsigned int quadVAO, quadVBO;
 	unsigned int framebuffer, textureColorbuffer, rbo;
 	unsigned int shadowFB, shadowCB, shadowRB;
+	unsigned int CB, FB, RB;
+	unsigned int intermediateFBO, screenTexture;
 	float deltaTime = 0.f;
 	float lastFrame = 0.f;
+
+	bool isBbox = true;
+	unsigned int lastFrameForBbox = 0;
 
 	int numObjVisible = 0;
 };
